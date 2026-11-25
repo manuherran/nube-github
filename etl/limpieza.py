@@ -17,7 +17,7 @@ def limpiar(filas):
         except ValueError:
             rechazadas.append((numero, "valor no numérico"))
             continue
-        if not math.isfinite(valor) or valor < 0:
+        if not math.isfinite(valor) or valor < -10:
             rechazadas.append((numero, "valor fuera de rango"))
             continue
         clave = (dia, fila["estacion"], fila["contaminante"])
