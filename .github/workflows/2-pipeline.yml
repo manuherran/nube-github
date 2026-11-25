@@ -2,8 +2,6 @@ name: 2. Pipeline de datos
 on:
   push: { branches: [main] }
   pull_request: { branches: [main] }
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
       estacion:
