@@ -1,0 +1,33 @@
+name: 3. Matriz por estación
+on: workflow_dispatch
+permissions: { contents: read }
+jobs:
+  estacion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        estacion: [Norte, Centro, Sur]
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: solo-para-pruebas }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:solo-para-pruebas@localhost:5432/postgres
+      ESTACION: ${{ matrix.estacion }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          mkdir -p salida
+          docker build -t etl .
+          docker run --rm --network host --user "$(id -u):$(id -g)" \
+            -e DATABASE_URL -e ESTACION -v "$PWD/salida:/app/salida" etl
+      - uses: actions/upload-artifact@v7
+        with:
+          name: resumen-${{ matrix.estacion }}
+          path: salida
+          retention-days: 7
