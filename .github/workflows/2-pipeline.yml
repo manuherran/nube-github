@@ -1,0 +1,91 @@
+name: 2. Pipeline de datos
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+  workflow_dispatch:
+
+# Permisos mínimos; cada job pide solo lo que necesita.
+permissions: { contents: read }
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: solo-para-pruebas }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:solo-para-pruebas@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+      - name: Construir la imagen
+        run: docker build -t etl:prueba .
+      - name: Pasar las pruebas dentro del contenedor
+        run: docker run --rm --network host -e DATABASE_URL etl:prueba python -m pytest -v -p no:cacheprovider
+
+  imagen:
+    needs: probar
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v7
+      - name: Construir y publicar en GHCR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IMG="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            -t "$IMG:$GITHUB_SHA" -t "$IMG:latest" .
+          docker push --all-tags "$IMG"
+
+  ejecutar:
+    needs: imagen
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { packages: read }
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: solo-para-pruebas }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:solo-para-pruebas@localhost:5432/postgres
+      EJECUCION: ${{ github.run_number }}
+    steps:
+      - name: Ejecutar el contenedor publicado
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IMG="ghcr.io/${GITHUB_REPOSITORY,,}:$GITHUB_SHA"
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          mkdir -p salida
+          docker run --rm --network host --user "$(id -u):$(id -g)" \
+            -e DATABASE_URL -e EJECUCION -v "$PWD/salida:/app/salida" "$IMG"
+      - uses: actions/upload-pages-artifact@v5
+        with: { path: salida }
+
+  publicar:
+    needs: ejecutar
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { pages: write, id-token: write }
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - id: pages
+        uses: actions/deploy-pages@v5

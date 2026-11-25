@@ -1,0 +1,16 @@
+name: 1. Hola, nube
+on: workflow_dispatch
+permissions: {}
+jobs:
+  maquina:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Describir la máquina
+        run: |
+          nproc
+          free -h
+          df -h /
+          cat /etc/os-release
+      - name: Ejecutar un contenedor
+        run: docker run --rm hello-world

@@ -1,0 +1,6 @@
+.git
+.github
+salida
+.venv
+.env
+**/__pycache__
